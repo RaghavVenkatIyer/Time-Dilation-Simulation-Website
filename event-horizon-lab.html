@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Event Horizon Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: observatory console — live simulation viewport left, parameter deck right, readouts and instruments below, then a terminal that mirrors the Python script's printout. Single committed dark look (space). */
+:root {
+  --void: #06070c;
+  --panel: #0e1019;
+  --panel-2: #151826;
+  --line: #262a3d;
+  --ink: #e9e7f2;
+  --ink-dim: #9a98ad;
+  --ink-faint: #64627a;
+  --plasma: #ff9440;      /* redshift / accent */
+  --plasma-soft: #ffb877;
+  --blueshift: #82b6ff;   /* approaching side / viewer */
+  --warn: #ff5d5d;
+  --ok: #7bd8a8;
+  --f-display: "Syne", "Avenir Next", "Segoe UI", sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--void); }
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1280px; margin: 0 auto; display: grid; gap: 28px; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.eyebrow { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--plasma); }
+h1 { font-family: var(--f-display); font-weight: 800; font-size: clamp(34px, 6vw, 64px); line-height: .95; margin: 6px 0 0; letter-spacing: -.02em; text-wrap: balance; }
+h1 span { color: transparent; -webkit-text-stroke: 1.2px var(--ink); }
+.lede { max-width: 52ch; color: var(--ink-dim); margin: 0; }
+
+h2 { font-family: var(--f-display); font-weight: 700; font-size: 20px; margin: 0; letter-spacing: -.01em; }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sec-head small { font-family: var(--f-mono); color: var(--ink-faint); font-size: 12px; }
+
+/* ---------- top grid ---------- */
+.top { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .top { grid-template-columns: 1fr; } }
+
+.viewport {
+  position: relative; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 45%, #121424 0%, var(--void) 70%);
+  aspect-ratio: 16 / 11; max-width: 100%;
+}
+@media (max-width: 560px) { .viewport { aspect-ratio: 4 / 5; } }
+#sky { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hud { position: absolute; font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-dim); pointer-events: none; line-height: 1.55; }
+.hud b { color: var(--ink); font-weight: 500; }
+.hud.tl { top: 12px; left: 14px; }
+.hud.br { bottom: 12px; right: 14px; text-align: right; }
+.hud.bl { bottom: 12px; left: 14px; }
+.legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.status-pill { display: inline-block; padding: 2px 8px; border-radius: 99px; border: 1px solid currentColor; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.vp-controls { position: absolute; top: 10px; right: 12px; display: flex; gap: 6px; }
+
+/* ---------- control deck ---------- */
+.deck { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 18px; }
+.group { display: grid; gap: 10px; }
+.group-title { font-family: var(--f-mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); display: flex; justify-content: space-between; gap: 8px; }
+.field { display: grid; gap: 5px; }
+.field label { font-size: 13px; color: var(--ink-dim); display: flex; justify-content: space-between; gap: 8px; }
+.field label em { font-style: normal; font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-faint); }
+.input-row { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); overflow: hidden; }
+.input-row:focus-within { border-color: var(--plasma); box-shadow: 0 0 0 3px rgba(255,148,64,.15); }
+.input-row input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--ink); font-family: var(--f-mono); font-size: 14px; padding: 9px 10px; outline: none; }
+.input-row .unit { font-family: var(--f-mono); font-size: 12px; color: var(--ink-faint); padding: 0 10px; display: flex; align-items: center; border-left: 1px solid var(--line); white-space: nowrap; }
+.field.bad .input-row { border-color: var(--warn); }
+.hint { font-size: 12px; color: var(--ink-faint); margin: 0; }
+.hint.err { color: var(--warn); }
+
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+button { font: inherit; cursor: pointer; }
+.chip { font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); border-radius: 99px; padding: 5px 11px; transition: border-color .15s, color .15s, background .15s; }
+.chip:hover { border-color: var(--ink-faint); color: var(--ink); }
+.chip.on { border-color: var(--plasma); color: var(--plasma-soft); background: rgba(255,148,64,.08); }
+.chip:focus-visible, .seg button:focus-visible, .icon-btn:focus-visible, .term input:focus-visible { outline: 2px solid var(--plasma); outline-offset: 2px; }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { background: transparent; border: 0; color: var(--ink-dim); font-size: 12.5px; padding: 7px 8px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--panel-2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--plasma); }
+
+input[type=range] { width: 100%; accent-color: var(--plasma); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 420px) { .two { grid-template-columns: 1fr; } }
+
+.icon-btn { background: rgba(14,16,25,.75); border: 1px solid var(--line); color: var(--ink-dim); border-radius: 8px; font-family: var(--f-mono); font-size: 11.5px; padding: 5px 9px; }
+.icon-btn:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+/* ---------- results ---------- */
+.results { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.res { background: var(--panel); padding: 14px 16px 15px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.res .k { font-size: 12.5px; color: var(--ink-dim); display: flex; justify-content: space-between; gap: 8px; }
+.res .k i { font-style: normal; font-family: var(--f-mono); font-size: 11px; color: var(--ink-faint); }
+.res .v { font-family: var(--f-mono); font-size: 19px; font-variant-numeric: tabular-nums; color: var(--ink); overflow-wrap: anywhere; }
+.res .v sup { font-size: .62em; }
+.res .u { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-faint); }
+.res .flag { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--warn); }
+.res.key { background: linear-gradient(180deg, rgba(255,148,64,.09), transparent 70%), var(--panel); }
+.res.key .v { color: var(--plasma-soft); }
+
+/* ---------- instruments ---------- */
+.instruments { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 900px) { .instruments { grid-template-columns: 1fr; } }
+.inst { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.inst h3 { font-family: var(--f-display); font-size: 15px; font-weight: 700; margin: 0; }
+.inst p { margin: 0; font-size: 13px; color: var(--ink-dim); }
+.inst canvas { width: 100%; height: 170px; display: block; }
+.inst .readout { font-family: var(--f-mono); font-size: 12px; color: var(--ink-faint); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.inst .readout b { color: var(--ink); font-weight: 500; }
+
+/* ---------- terminal ---------- */
+.term { background: #04050a; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.term-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--line); font-family: var(--f-mono); font-size: 12px; color: var(--ink-faint); }
+.term-bar .dots { display: flex; gap: 6px; }
+.term-bar .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: block; }
+.term pre { margin: 0; padding: 14px 16px; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.6; color: #c9c7d8; overflow-x: auto; max-height: 360px; }
+.term pre .p { color: var(--plasma-soft); }
+.term pre .c { color: var(--ink-faint); }
+.term pre .w { color: var(--warn); }
+.term-in { display: flex; align-items: center; gap: 8px; padding: 10px 16px 14px; font-family: var(--f-mono); font-size: 12.5px; border-top: 1px dashed var(--line); }
+.term-in span { color: var(--plasma); }
+.term input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--ink); font-family: var(--f-mono); font-size: 13px; outline: none; }
+
+/* ---------- formulas ---------- */
+.formulas { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 24px; }
+.formula { display: grid; gap: 2px; padding: 10px 0; border-top: 1px solid var(--line); min-width: 0; }
+.formula .n { font-size: 13px; color: var(--ink-dim); }
+.formula code { font-family: var(--f-mono); font-size: 13px; color: var(--ink); overflow-wrap: anywhere; }
+.formula .note { font-size: 12px; color: var(--ink-faint); }
+footer { color: var(--ink-faint); font-size: 12.5px; max-width: 70ch; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Schwarzschild black hole · interactive</div>
+      <h1>Event Horizon <span>Lab</span></h1>
+    </div>
+    <p class="lede">Every calculation from <code style="font-family:var(--f-mono);font-size:13px">blackholesimulationoriginal.py</code>, run live in the browser. Change the mass or the distance and the simulation, clocks, ruler and tidal stretch all update at once.</p>
+  </header>
+
+  <section class="top">
+    <div class="viewport" id="viewport">
+      <canvas id="sky" aria-label="Animated black hole with accretion disk and an orbiting probe at the chosen distance"></canvas>
+      <div class="hud tl" id="hudTL"></div>
+      <div class="hud bl">
+        <div><span class="legend-dot" style="background:var(--plasma)"></span>accretion disk (r = 3–6.5 r<sub>s</sub>)</div>
+        <div><span class="legend-dot" style="background:#fff;box-shadow:0 0 6px #fff"></span>probe at your distance r</div>
+        <div><span class="legend-dot" style="border:1px dashed var(--ink-dim)"></span>event horizon r<sub>s</sub></div>
+      </div>
+      <div class="hud br" id="hudBR"></div>
+      <div class="vp-controls">
+        <button class="icon-btn" id="pauseBtn" type="button" aria-pressed="false">Pause</button>
+      </div>
+    </div>
+
+    <form class="deck" id="deck" autocomplete="off">
+      <div class="group">
+        <div class="group-title"><span>Black hole</span><span>presets</span></div>
+        <div class="presets" id="presets">
+          <button type="button" class="chip" data-m="1.989e30" data-q="3.4">Sun-mass</button>
+          <button type="button" class="chip on" data-m="1.989e31" data-q="3.4">Stellar · 10 M☉</button>
+          <button type="button" class="chip" data-m="8.26e36" data-q="4">Sagittarius A*</button>
+          <button type="button" class="chip" data-m="1.29e40" data-q="5">M87*</button>
+        </div>
+        <div class="field" id="fM">
+          <label for="inM">Mass of black hole <em>M</em></label>
+          <div class="input-row"><input id="inM" inputmode="decimal" value="1.989e31"><span class="unit">kg</span></div>
+          <p class="hint" id="hintM"></p>
+        </div>
+        <div class="field" id="fR">
+          <label for="inR">Distance of the person from the black hole <em>r</em></label>
+          <div class="input-row"><input id="inR" inputmode="decimal" value="100000"><span class="unit">m</span></div>
+          <input type="range" id="rSlide" min="0" max="1000" value="200" aria-label="Distance in Schwarzschild radii">
+          <p class="hint" id="hintR"></p>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title"><span>Time dilation</span></div>
+        <div class="seg" role="group" aria-label="Which time are you entering">
+          <button type="button" id="tMode0" class="on">I know viewer's time</button>
+          <button type="button" id="tMode1">I know faller's time</button>
+        </div>
+        <div class="field">
+          <label for="inT" id="lblT">Viewer's time</label>
+          <div class="input-row"><input id="inT" inputmode="decimal" value="60"><span class="unit">s</span></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title"><span>Compressed length</span></div>
+        <div class="seg" role="group" aria-label="Which length are you entering">
+          <button type="button" id="lMode0" class="on">I know viewer's length</button>
+          <button type="button" id="lMode1">I know faller's length</button>
+        </div>
+        <div class="field">
+          <label for="inL" id="lblL">Viewer's length</label>
+          <div class="input-row"><input id="inL" inputmode="decimal" value="1"><span class="unit">m</span></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title"><span>The object &amp; the person</span></div>
+        <div class="two">
+          <div class="field">
+            <label for="inm">Object mass <em>m</em></label>
+            <div class="input-row"><input id="inm" inputmode="decimal" value="70"><span class="unit">kg</span></div>
+          </div>
+          <div class="field">
+            <label for="inh">Person's height <em>h</em></label>
+            <div class="input-row"><input id="inh" inputmode="decimal" value="1.8"><span class="unit">m</span></div>
+          </div>
+        </div>
+        <p class="hint">Scientific notation works everywhere, e.g. <code style="font-family:var(--f-mono)">8.26e36</code>.</p>
+      </div>
+    </form>
+  </section>
+
+  <section style="display:grid;gap:12px">
+    <div class="sec-head"><h2>Results</h2><small id="resNote">G = 6.674×10⁻¹¹ · c = 3.0×10⁸ m/s</small></div>
+    <div class="results" id="results"></div>
+  </section>
+
+  <section style="display:grid;gap:12px">
+    <div class="sec-head"><h2>Instruments</h2><small>what the numbers look like</small></div>
+    <div class="instruments">
+      <div class="inst">
+        <h3>Two clocks</h3>
+        <p>The far-away viewer's clock against the clock held at distance r. Both start together; watch the near clock fall behind.</p>
+        <canvas id="clocks"></canvas>
+        <div class="readout"><span>near clock rate <b id="clockRate">—</b></span><button class="chip" type="button" id="clockReset">Reset clocks</button></div>
+      </div>
+      <div class="inst">
+        <h3>Compressed ruler</h3>
+        <p>The length you entered, drawn for each observer on the same scale.</p>
+        <canvas id="ruler"></canvas>
+        <div class="readout"><span>contraction factor <b id="rulerFactor">—</b></span></div>
+      </div>
+      <div class="inst">
+        <h3>Tidal stretch</h3>
+        <p>Difference in pull between head and feet, compared with Earth's gravity (9.81 m/s²).</p>
+        <canvas id="tidal"></canvas>
+        <div class="readout"><span>head-to-foot <b id="tidalG">—</b></span><span id="tidalVerdict"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="term" aria-label="Python script output">
+    <div class="term-bar"><div class="dots"><i></i><i></i><i></i></div><span>python blackholesimulationoriginal.py</span><button class="chip" type="button" id="copyOut">Copy output</button></div>
+    <pre id="out"></pre>
+    <div class="term-in"><span>&gt;&gt;&gt;</span><input id="termIn" placeholder="type kill, or anything else, and press Enter" aria-label="Final input of the script"></div>
+  </section>
+
+  <section style="display:grid;gap:8px">
+    <div class="sec-head"><h2>Formulas used</h2><small>same as the script</small></div>
+    <div class="formulas">
+      <div class="formula"><span class="n">Schwarzschild radius</span><code>r_s = 2GM / c²</code></div>
+      <div class="formula"><span class="n">Time dilation</span><code>t_faller = t_viewer · √(1 − r_s/r)</code></div>
+      <div class="formula"><span class="n">Escape velocity</span><code>v_esc = √(2GM / r)</code></div>
+      <div class="formula"><span class="n">Gravitational acceleration</span><code>g = GM / r²</code></div>
+      <div class="formula"><span class="n">Orbital velocity</span><code>v_orb = √(GM / r)</code></div>
+      <div class="formula"><span class="n">Gravitational redshift</span><code>z = 1/√(1 − r_s/r) − 1</code></div>
+      <div class="formula"><span class="n">Compressed length</span><code>L_faller = L_viewer · √(1 − r_s/r)</code></div>
+      <div class="formula"><span class="n">Gravitational potential energy</span><code>U = −GmM / r</code></div>
+      <div class="formula"><span class="n">Hover acceleration</span><code>a = GM/r² · √(1 − r_s/r)</code><span class="note">As written in the script. Textbook GR divides by √(1 − r_s/r) instead, which grows without limit near the horizon.</span></div>
+      <div class="formula"><span class="n">Orbital period</span><code>T = 2π √(r³ / GM)</code></div>
+      <div class="formula"><span class="n">Tidal acceleration</span><code>Δa = 2GMh / r³</code></div>
+    </div>
+  </section>
+
+  <footer>Newtonian formulas (escape velocity, orbital velocity and period, tidal force) are exactly as in the original script. Real orbits are only stable outside 3 r<sub>s</sub>, and light can circle the hole at 1.5 r<sub>s</sub>; the picture marks the disk from 3 r<sub>s</sub> outward for that reason.</footer>
+</div>
+
+<script>
+(() => {
+const G = 6.674e-11, c = 3.0e8, g0 = 9.81;
+const $ = id => document.getElementById(id);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const state = { tMode: 0, lMode: 0, paused: false, valid: false };
+let R = {}; // computed results
+
+// ---------- formatting ----------
+function sup(n) { return n.replace(/e\+?(-?)(\d+)/, (_, s, d) => ` × 10<sup>${s ? '−' : ''}${d}</sup>`); }
+function fmt(v, digits = 4) {
+  if (v === null || v === undefined || !isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a !== 0 && (a >= 1e6 || a < 1e-3)) return sup(v.toExponential(digits));
+  return Number(v.toPrecision(digits + 2)).toLocaleString('en-US', { maximumFractionDigits: 6 });
+}
+function human(sec) {
+  if (!isFinite(sec)) return '';
+  const a = Math.abs(sec);
+  if (a < 120) return '';
+  if (a < 7200) return `≈ ${(sec/60).toFixed(1)} min`;
+  if (a < 172800) return `≈ ${(sec/3600).toFixed(1)} h`;
+  if (a < 3.156e7*2) return `≈ ${(sec/86400).toFixed(1)} days`;
+  return `≈ ${fmt(sec/3.156e7, 3)} years`;
+}
+function pyStr(v) { // close to Python's float repr
+  if (!isFinite(v)) return v > 0 ? 'inf' : 'nan';
+  let s = String(v);
+  if (/e/.test(s)) { s = s.replace(/e([+-])(\d)$/, 'e$10$2'); if (!/\./.test(s.split('e')[0])) {} }
+  else if (!/\./.test(s)) s += '.0';
+  return s;
+}
+function num(id) { const v = parseFloat(String($(id).value).replace(/[, _]/g, '')); return isFinite(v) ? v : NaN; }
+
+// ---------- compute ----------
+function compute() {
+  const M = num('inM'), r = num('inR'), T = num('inT'), L = num('inL'), m = num('inm'), h = num('inh');
+  const errs = {};
+  if (!(M > 0)) errs.M = 'Enter a positive mass in kilograms.';
+  if (!(r > 0)) errs.R = 'Enter a positive distance in metres.';
+  $('fM').classList.toggle('bad', !!errs.M); $('fR').classList.toggle('bad', !!errs.R);
+  $('hintM').textContent = errs.M || (M > 0 ? `= ${fmtPlain(M / 1.989e30)} solar masses` : '');
+  $('hintM').className = 'hint' + (errs.M ? ' err' : '');
+  if (errs.M || errs.R) { state.valid = false; $('hintR').textContent = errs.R || ''; $('hintR').className = 'hint err'; render(); return; }
+
+  const rs = 2 * G * M / c**2;
+  const q = r / rs;
+  const inside = r <= rs;
+  const f = inside ? NaN : Math.sqrt(1 - rs / r);
+  R = {
+    M, r, rs, q, inside, f, m, h,
+    T, L,
+    tFaller: state.tMode === 0 ? T * f : NaN,
+    tViewer: state.tMode === 1 ? T / f : NaN,
+    vEsc: Math.sqrt(2 * G * M / r),
+    gAcc: G * M / r**2,
+    vOrb: Math.sqrt(G * M / r),
+    z: inside ? NaN : 1 / f - 1,
+    lFaller: state.lMode === 0 ? L * f : NaN,
+    lViewer: state.lMode === 1 ? L / f : NaN,
+    U: -(G * m * M / r),
+    hover: inside ? NaN : G * M / r**2 * f,
+    period: 2 * Math.PI * Math.sqrt(r**3 / (G * M)),
+    tidal: 2 * G * M * h / r**3,
+  };
+  state.valid = true;
+  $('hintR').className = 'hint' + (inside ? ' err' : '');
+  $('hintR').textContent = inside
+    ? `Inside the event horizon (r ≤ r_s = ${fmtPlain(rs)} m). The script would stop here with a math domain error.`
+    : `= ${q.toFixed(q < 10 ? 3 : 1)} × r_s  (r_s = ${fmtPlain(rs)} m)`;
+  syncSlider();
+  render();
+}
+function fmtPlain(v) { const a = Math.abs(v); return (a >= 1e6 || (a < 1e-3 && a)) ? v.toExponential(3) : Number(v.toPrecision(5)).toLocaleString('en-US'); }
+
+// slider: q from 1.01 to 1000 (log)
+const QMIN = 1.01, QMAX = 1000;
+function sliderToQ(s) { return QMIN * Math.pow(QMAX / QMIN, s / 1000); }
+function qToSlider(q) { return Math.round(1000 * Math.log(q / QMIN) / Math.log(QMAX / QMIN)); }
+let sliding = false;
+function syncSlider() { if (!sliding && isFinite(R.q)) $('rSlide').value = Math.max(0, Math.min(1000, qToSlider(R.q))); }
+
+// ---------- render results ----------
+function card(k, sym, v, u, opts = {}) {
+  return `<div class="res${opts.key ? ' key' : ''}"><div class="k"><span>${k}</span><i>${sym}</i></div><div class="v">${fmt(v)}</div><div class="u">${u}${opts.extra ? ' · ' + opts.extra : ''}</div>${opts.flag ? `<div class="flag">${opts.flag}</div>` : ''}</div>`;
+}
+function render() {
+  const box = $('results');
+  if (!state.valid) { box.innerHTML = `<div class="res"><div class="k">Waiting for valid inputs</div><div class="u">Check the highlighted fields.</div></div>`; renderTerm(); return; }
+  const x = R;
+  const timeCard = state.tMode === 0
+    ? card("Faller's time", 't_faller', x.tFaller, 's', { key: 1, extra: human(x.tFaller) || `for ${fmtPlain(x.T)} s of viewer's time`, flag: x.inside ? 'undefined inside horizon' : '' })
+    : card("Viewer's time", 't_viewer', x.tViewer, 's', { key: 1, extra: human(x.tViewer) || `for ${fmtPlain(x.T)} s of faller's time`, flag: x.inside ? 'undefined inside horizon' : '' });
+  const lenCard = state.lMode === 0
+    ? card("Faller's length", 'L_faller', x.lFaller, 'm', { extra: `from ${fmtPlain(x.L)} m` })
+    : card("Viewer's length", 'L_viewer', x.lViewer, 'm', { extra: `from ${fmtPlain(x.L)} m` });
+  box.innerHTML = [
+    card('Schwarzschild radius', 'r_s', x.rs, 'm', { key: 1, extra: x.rs > 1000 ? `${fmtPlain(x.rs/1000)} km` : '' }),
+    timeCard,
+    card('Escape velocity', 'v_esc', x.vEsc, 'm/s', { extra: `${(x.vEsc/c*100).toPrecision(3)}% of c`, flag: x.vEsc >= c ? 'exceeds the speed of light' : '' }),
+    card('Gravitational acceleration', 'g', x.gAcc, 'm/s²', { extra: `${fmtPlain(x.gAcc/g0)} g` }),
+    card('Orbital velocity', 'v_orb', x.vOrb, 'm/s', { extra: `${(x.vOrb/c*100).toPrecision(3)}% of c` }),
+    card('Gravitational redshift', 'z', x.z, 'dimensionless', { extra: isFinite(x.z) ? `500 nm light arrives at ${fmtPlain(500*(1+x.z))} nm` : '' }),
+    lenCard,
+    card('Potential energy', 'U', x.U, 'J', { extra: `object of ${fmtPlain(x.m)} kg` }),
+    card('Hover acceleration', 'a', x.hover, 'm/s²', { extra: isFinite(x.hover) ? `${fmtPlain(x.hover/g0)} g` : '', flag: x.inside ? 'no hovering inside horizon' : '' }),
+    card('Orbital period', 'T', x.period, 's', { extra: human(x.period) }),
+    card('Tidal acceleration', 'Δa', x.tidal, 'm/s²', { extra: `across ${fmtPlain(x.h)} m` }),
+    card('Distance in r_s', 'r / r_s', x.q, 'Schwarzschild radii', { extra: x.q < 3 && !x.inside ? 'inside the last stable orbit' : '' }),
+  ].join('');
+
+  $('hudTL').innerHTML = `<div>M <b>${fmtPlain(x.M)} kg</b></div><div>r <b>${fmtPlain(x.r)} m</b> = <b>${x.q.toFixed(2)} r<sub>s</sub></b></div><div style="margin-top:4px"><span class="status-pill" style="color:${x.inside ? 'var(--warn)' : x.q < 3 ? 'var(--plasma-soft)' : 'var(--ok)'}">${x.inside ? 'beyond the horizon' : x.q < 1.5 ? 'inside photon sphere' : x.q < 3 ? 'unstable orbit zone' : 'stable orbit'}</span></div>`;
+  $('hudBR').innerHTML = `<div>clock rate <b>${isFinite(x.f) ? x.f.toFixed(4) : '0'}</b></div><div>redshift z <b>${isFinite(x.z) ? fmtPlain(x.z) : '∞'}</b></div><div>period <b>${fmtPlain(x.period)} s</b></div>`;
+  $('clockRate').textContent = isFinite(x.f) ? `${x.f.toFixed(4)}×` : 'frozen';
+  $('rulerFactor').textContent = isFinite(x.f) ? `${x.f.toFixed(4)}` : '0';
+  const tg = x.tidal / g0;
+  $('tidalG').textContent = `${fmtPlain(tg)} g`;
+  $('tidalVerdict').innerHTML = tg < 0.01 ? '<span style="color:var(--ok)">unnoticeable</span>' : tg < 1 ? '<span style="color:var(--ok)">felt, survivable</span>' : tg < 10 ? '<span style="color:var(--plasma-soft)">painful</span>' : tg < 1000 ? '<span style="color:var(--warn)">fatal</span>' : '<span style="color:var(--warn)">spaghettified</span>';
+  renderTerm();
+  drawRuler();
+}
+
+// ---------- terminal ----------
+let killLine = '';
+function renderTerm() {
+  const out = $('out');
+  if (!state.valid) { out.innerHTML = '<span class="c"># waiting for valid inputs…</span>'; return; }
+  const x = R, p = s => `<span class="p">${s}</span>`;
+  const L = [];
+  L.push(p(`Enter the mass of black hole (kilograms): `) + pyStr(x.M));
+  L.push(p(`Enter the distance of the person from the black hole (meters): `) + pyStr(x.r));
+  L.push(`${pyStr(x.rs)} is the Schwarzschild radius`);
+  L.push(p(`Enter 0 for faller’s time (input viewer’s time), or 1 for viewer’s time (input faller’s time): `) + state.tMode);
+  if (x.inside) {
+    L.push(p(state.tMode === 0 ? `Enter the viewer's time (seconds): ` : `Enter the faller’s time (seconds): `) + pyStr(x.T));
+    L.push(`<span class="w">Traceback (most recent call last):\nValueError: math domain error</span>`);
+    L.push(`<span class="c"># r is inside the event horizon, so √(1 − r_s/r) is undefined and the script stops here.</span>`);
+    out.innerHTML = L.join('\n'); return;
+  }
+  if (state.tMode === 0) { L.push(p(`Enter the viewer's time (seconds): `) + pyStr(x.T)); L.push(`${pyStr(x.tFaller)} is the faller’s time`); }
+  else { L.push(p(`Enter the faller’s time (seconds): `) + pyStr(x.T)); L.push(`${pyStr(x.tViewer)} is the viewer’s time`); }
+  L.push(`${pyStr(x.vEsc)} is the escape velocity`);
+  L.push(`${pyStr(x.gAcc)} is the gravitational acceleration near the black hole`);
+  L.push(`${pyStr(x.vOrb)} is the orbital velocity of an object`);
+  L.push(`${pyStr(x.z)} is the gravitational redshift`);
+  L.push(`Compressed Length Calculator Machine`);
+  L.push(p(`Enter 0 if providing viewers length, enter 1 if providing fallers length`) + state.lMode);
+  if (state.lMode === 0) { L.push(p(`Enter the viewers length `) + pyStr(x.L)); L.push(`${pyStr(x.lFaller)} is the fallerslength`); }
+  else { L.push(p(`Enter the fallers length`) + pyStr(x.L)); L.push(`${pyStr(x.lViewer)} is the viewers length`); }
+  L.push(`Gravitational Potential Energy Engine`);
+  L.push(p(`Enter the mass of the object near the black hole`) + x.m);
+  L.push(`${pyStr(x.U)} is the gravitational potential energy`);
+  L.push(`Acceleration required to hover at distance r from black hole calculator`);
+  L.push(`${pyStr(x.hover)} is the acceleration required to hover above the black hole`);
+  L.push(`Orbital period near a black hole calculator`);
+  L.push(`${pyStr(x.period)} is the orbital period of the black hole`);
+  L.push(`Tidal force calculator`);
+  L.push(p(`Enter the persons height`) + x.h);
+  L.push(`${pyStr(x.tidal)} is the tidalforce`);
+  L.push(`All calculations are printed and are successful, below is the summary of results : `);
+  L.push(`${pyStr(x.rs)} is the schwarzchild radius`);
+  L.push(`${pyStr(x.vEsc)} is the escape velocity`);
+  L.push(`${pyStr(x.gAcc)} is the gravitational acceleration`);
+  L.push(`${pyStr(x.vOrb)} is the orbital velocity`);
+  L.push(`${pyStr(x.z)} is the gravitational redshift`);
+  L.push(`${pyStr(x.U)} is the gravitational potential energy`);
+  L.push(`${pyStr(x.hover)} is the acceleration`);
+  L.push(`${pyStr(x.period)} is the orbital period`);
+  L.push(`${pyStr(x.tidal)} is the tidal force`);
+  if (killLine) L.push(killLine);
+  out.innerHTML = L.join('\n');
+}
+$('termIn').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value;
+  killLine = `<span class="p">${v.replace(/[<>&]/g, '')}</span>\n` + (v === 'kill' ? 'This code has been terminated' : 'Thanks for using the simulator, have a nice day!');
+  e.target.value = ''; renderTerm(); $('out').scrollTop = 1e9;
+});
+$('copyOut').addEventListener('click', e => {
+  const text = $('out').innerText, btn = e.currentTarget;
+  const done = () => { btn.textContent = 'Copied'; setTimeout(() => btn.textContent = 'Copy output', 1400); };
+  try { navigator.clipboard.writeText(text).then(done, () => selectOut()); } catch { selectOut(); }
+});
+function selectOut() { const s = getSelection(), rg = document.createRange(); rg.selectNodeContents($('out')); s.removeAllRanges(); s.addRange(rg); }
+
+// ---------- controls ----------
+['inM','inR','inT','inL','inm','inh'].forEach(id => $(id).addEventListener('input', () => { if (id === 'inM') clearPreset(); compute(); }));
+$('deck').addEventListener('submit', e => e.preventDefault());
+function clearPreset() { document.querySelectorAll('#presets .chip').forEach(b => b.classList.remove('on')); }
+document.querySelectorAll('#presets .chip').forEach(b => b.addEventListener('click', () => {
+  clearPreset(); b.classList.add('on');
+  const M = parseFloat(b.dataset.m), q = parseFloat(b.dataset.q);
+  const rs = 2 * G * M / c**2;
+  $('inM').value = b.dataset.m;
+  $('inR').value = Number((rs * q).toPrecision(4)).toExponential().replace(/\.?0+e/, 'e').replace('e+', 'e');
+  if (rs * q < 1e7) $('inR').value = Math.round(rs * q);
+  resetClocks(); compute();
+}));
+$('rSlide').addEventListener('input', e => {
+  if (!(R.rs > 0)) return;
+  sliding = true;
+  const r = R.rs * sliderToQ(+e.target.value);
+  $('inR').value = r < 1e7 ? Math.round(r) : r.toPrecision(4);
+  compute(); sliding = false;
+});
+function setMode(kind, mode) {
+  if (kind === 't') {
+    state.tMode = mode; $('tMode0').classList.toggle('on', !mode); $('tMode1').classList.toggle('on', !!mode);
+    $('lblT').textContent = mode ? "Faller's time" : "Viewer's time";
+  } else {
+    state.lMode = mode; $('lMode0').classList.toggle('on', !mode); $('lMode1').classList.toggle('on', !!mode);
+    $('lblL').textContent = mode ? "Faller's length" : "Viewer's length";
+  }
+  compute();
+}
+$('tMode0').onclick = () => setMode('t', 0); $('tMode1').onclick = () => setMode('t', 1);
+$('lMode0').onclick = () => setMode('l', 0); $('lMode1').onclick = () => setMode('l', 1);
+$('pauseBtn').onclick = e => { state.paused = !state.paused; e.currentTarget.textContent = state.paused ? 'Play' : 'Pause'; e.currentTarget.setAttribute('aria-pressed', state.paused); };
+
+// ---------- canvas helpers ----------
+function fit(cv) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), r = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: r.width, h: r.height };
+}
+
+// ---------- main simulation ----------
+const sky = $('sky');
+const stars = Array.from({ length: 420 }, () => ({ x: Math.random(), y: Math.random(), s: Math.random() ** 3 * 1.6 + .2, t: Math.random() * 6.28 }));
+const parts = Array.from({ length: 1700 }, () => {
+  const u = Math.random();
+  return { rr: 3 + 3.5 * Math.sqrt(u) * Math.random() ** .3, a: Math.random() * Math.PI * 2, b: Math.random(), j: (Math.random() - .5) * .04 };
+});
+let probeA = 0, simT = 0, last = performance.now();
+const INC = 0.24; // disk tilt (vertical squash)
+
+function lensPoint(cx, cy, x, y, rs) {
+  // light from behind the hole is bent around it: push points that sit near the shadow outward
+  const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy) || 1e-6;
+  const b = 2.6 * rs; // shadow radius
+  const nd = d + (b * b) / d * 0.9;
+  return [cx + dx / d * nd, cy + dy / d * nd];
+}
+
+function drawSky(dt) {
+  const { ctx, w, h } = fit(sky);
+  const cx = w / 2, cy = h * 0.5;
+  const base = Math.min(w, h * 1.35);
+  const rsPx = base * 0.052; // pixels per Schwarzschild radius
+  ctx.clearRect(0, 0, w, h);
+
+  // stars (lensed slightly)
+  for (const s of stars) {
+    let x = s.x * w, y = s.y * h;
+    [x, y] = lensPoint(cx, cy, x, y, rsPx * 0.6);
+    const tw = reduce ? 1 : .7 + .3 * Math.sin(simT * 1.3 + s.t);
+    ctx.fillStyle = `rgba(220,225,255,${.25 + .55 * tw * Math.min(1, s.s)})`;
+    ctx.fillRect(x, y, s.s, s.s);
+  }
+
+  const q = state.valid ? R.q : 5;
+  const inside = state.valid && R.inside;
+
+  // disk particles: split into far half (drawn lensed + behind) and near half (in front)
+  const spin = reduce ? .15 : 1;
+  const far = [], near = [];
+  for (const p of parts) {
+    p.a += dt * spin * 0.9 / Math.pow(p.rr, 1.5);
+    const x = Math.cos(p.a) * p.rr * rsPx, yz = Math.sin(p.a) * p.rr * rsPx;
+    (yz < 0 ? far : near).push([p, x, yz]);
+  }
+  ctx.globalCompositeOperation = 'lighter';
+  const shadowR = 2.6 * rsPx;
+  // far side, seen directly (squashed) and lensed up over the top
+  for (const [p, x, yz] of far) {
+    const dop = -Math.sin(p.a + Math.PI / 2); // approaching on left
+    const col = diskColor(p.rr, dop, p.b);
+    // direct image
+    plot(ctx, cx + x, cy + yz * INC, col, .55);
+    // lensed image: arc over the shadow
+    const th = Math.acos(Math.max(-1, Math.min(1, x / (p.rr * rsPx))));
+    const rad = shadowR * 1.06 + (p.rr - 3) * rsPx * 0.5;
+    const lx = cx + Math.cos(th) * rad, ly = cy - Math.sin(th) * rad * 0.96;
+    plot(ctx, lx, ly, col, .7);
+    // faint secondary image below the shadow
+    const rad2 = shadowR * 1.03 + (p.rr - 3) * rsPx * 0.12;
+    plot(ctx, cx + Math.cos(th) * rad2, cy + Math.sin(th) * rad2 * 0.9, col, .16);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  // shadow + photon ring
+  const g = ctx.createRadialGradient(cx, cy, shadowR * .9, cx, cy, shadowR * 1.25);
+  g.addColorStop(0, 'rgba(255,190,120,0)'); g.addColorStop(.35, 'rgba(255,200,140,.55)'); g.addColorStop(1, 'rgba(255,150,60,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, shadowR * 1.25, 0, 7); ctx.fill();
+  ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(cx, cy, shadowR, 0, 7); ctx.fill();
+  // event horizon marker
+  ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(154,152,173,.55)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, rsPx, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(154,152,173,.8)'; ctx.font = '10px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
+  ctx.fillText('r_s', cx, cy + 3);
+
+  // probe orbit radius on screen (linear to 8 r_s, then log-compressed)
+  const maxR = w * 0.46;
+  let rPx = q <= 8 ? q * rsPx : (8 + 5 * Math.log10(q / 8)) * rsPx;
+  const offScale = rPx > maxR; rPx = Math.min(rPx, maxR);
+
+  // orbit path (behind half)
+  drawOrbit(ctx, cx, cy, rPx, true, inside, offScale);
+
+  // probe motion — visual speed scales with real angular speed (relative)
+  const omega = inside ? 0 : 0.9 / Math.pow(Math.max(q, 1.01), 1.5) * spin * 1.2 + .03;
+  probeA += dt * omega;
+  const px = cx + Math.cos(probeA) * rPx, pyz = Math.sin(probeA) * rPx;
+  const probeBehind = pyz < 0;
+  if (probeBehind && !inside) drawProbe(ctx, px, cy + pyz * INC, cx, cy, shadowR);
+
+  // near half of disk on top
+  ctx.globalCompositeOperation = 'lighter';
+  for (const [p, x, yz] of near) {
+    const dop = -Math.sin(p.a + Math.PI / 2);
+    plot(ctx, cx + x, cy + yz * INC, diskColor(p.rr, dop, p.b), .85);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  drawOrbit(ctx, cx, cy, rPx, false, inside, offScale);
+  if (!probeBehind && !inside) drawProbe(ctx, px, cy + pyz * INC, cx, cy, shadowR);
+  if (inside) {
+    ctx.fillStyle = 'rgba(255,93,93,.9)'; ctx.font = '12px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
+    ctx.fillText('probe has crossed the event horizon', cx, cy + shadowR + 26);
+  }
+  if (offScale) {
+    ctx.fillStyle = 'rgba(154,152,173,.85)'; ctx.font = '10.5px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
+    ctx.fillText(`orbit compressed: r = ${q.toFixed(0)} r_s`, cx, cy + rPx * INC + 18);
+  }
+}
+function plot(ctx, x, y, col, a) { ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${a * col[3]})`; ctx.fillRect(x - .9, y - .9, 1.8, 1.8); }
+function diskColor(rr, dop, b) {
+  // hotter inner edge, doppler boosted approaching side
+  const heat = Math.max(0, Math.min(1, (6.5 - rr) / 3.5));
+  const boost = 0.55 + 0.45 * dop;
+  const r = 255, gch = Math.round(120 + 110 * heat * boost + 25 * dop), bl = Math.round(40 + 150 * heat * Math.max(0, dop) * boost);
+  return [r, Math.min(255, gch), Math.min(255, bl), (.35 + .65 * boost) * (.6 + .4 * b)];
+}
+function drawOrbit(ctx, cx, cy, rPx, back, inside, off) {
+  ctx.save();
+  ctx.strokeStyle = inside ? 'rgba(255,93,93,.35)' : 'rgba(130,182,255,.38)';
+  ctx.lineWidth = 1; ctx.setLineDash(off ? [2, 6] : [5, 5]);
+  ctx.beginPath(); ctx.ellipse(cx, cy, rPx, rPx * INC, 0, back ? Math.PI : 0, back ? Math.PI * 2 : Math.PI); ctx.stroke();
+  ctx.restore();
+}
+function drawProbe(ctx, x, y, cx, cy, shadowR) {
+  if (Math.hypot(x - cx, y - cy) < shadowR && y < cy + 1) return; // hidden behind shadow
+  const z = state.valid ? R.z : 0;
+  // redshift colour: white at z≈0 → orange → deep red
+  const t = Math.min(1, Math.log10(1 + z * 10) / 1.5);
+  const col = `rgb(255,${Math.round(255 - 150 * t)},${Math.round(255 - 230 * t)})`;
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, 14);
+  glow.addColorStop(0, col); glow.addColorStop(.25, col.replace('rgb', 'rgba').replace(')', ',.45)')); glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 7); ctx.fill();
+}
+
+// ---------- clocks ----------
+let viewerT = 0, nearT = 0;
+function resetClocks() { viewerT = 0; nearT = 0; }
+$('clockReset').onclick = resetClocks;
+function drawClocks(dt) {
+  const { ctx, w, h } = fit($('clocks'));
+  ctx.clearRect(0, 0, w, h);
+  const f = state.valid && isFinite(R.f) ? R.f : 0;
+  viewerT += dt; nearT += dt * f;
+  const rad = Math.min(h * .38, w * .2);
+  dial(ctx, w * .27, h * .44, rad, viewerT, '#82b6ff', 'viewer (far away)');
+  dial(ctx, w * .73, h * .44, rad, nearT, '#ff9440', 'held at r');
+  ctx.fillStyle = '#9a98ad'; ctx.font = '11px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
+  ctx.fillText(`${viewerT.toFixed(1)} s`, w * .27, h * .44 + rad + 30);
+  ctx.fillText(`${nearT.toFixed(1)} s`, w * .73, h * .44 + rad + 30);
+}
+function dial(ctx, x, y, r, t, col, label) {
+  ctx.strokeStyle = '#262a3d'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+  for (let i = 0; i < 12; i++) { const a = i / 12 * 6.283; ctx.strokeStyle = i % 3 ? '#262a3d' : '#64627a'; ctx.beginPath(); ctx.moveTo(x + Math.sin(a) * r * .82, y - Math.cos(a) * r * .82); ctx.lineTo(x + Math.sin(a) * r * .95, y - Math.cos(a) * r * .95); ctx.stroke(); }
+  const a = (t % 60) / 60 * 6.283;
+  ctx.strokeStyle = col; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.sin(a) * r * .8, y - Math.cos(a) * r * .8); ctx.stroke();
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill();
+  ctx.fillStyle = '#e9e7f2'; ctx.font = '11px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(label, x, y + r + 15);
+}
+
+// ---------- ruler ----------
+function drawRuler() {
+  const { ctx, w, h } = fit($('ruler'));
+  ctx.clearRect(0, 0, w, h);
+  if (!state.valid) return;
+  const f = isFinite(R.f) ? R.f : 0;
+  const vL = state.lMode === 0 ? R.L : R.lViewer, fL = state.lMode === 0 ? R.lFaller : R.L;
+  const mx = Math.max(isFinite(vL) ? vL : 0, isFinite(fL) ? fL : 0) || 1;
+  const left = 8, full = w - 16;
+  const bar = (y, len, col, label, val) => {
+    const L = isFinite(len) ? len / mx * full : 0;
+    ctx.fillStyle = '#9a98ad'; ctx.font = '11px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(label, left, y - 8);
+    ctx.fillStyle = '#151826'; ctx.fillRect(left, y, full, 16);
+    ctx.fillStyle = col; ctx.fillRect(left, y, L, 16);
+    ctx.strokeStyle = 'rgba(6,7,12,.55)'; ctx.lineWidth = 1;
+    const ticks = 10; for (let i = 1; i < ticks; i++) { const x = left + L * i / ticks; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + (i === 5 ? 10 : 6)); ctx.stroke(); }
+    ctx.fillStyle = '#e9e7f2'; ctx.font = '11px "IBM Plex Mono", monospace'; ctx.textAlign = 'right';
+    ctx.fillText(isFinite(len) ? `${fmtPlain(len)} m` : '—', left + full, y - 8);
+  };
+  bar(h * .3, vL, '#82b6ff', "viewer's length", vL);
+  bar(h * .72, fL, '#ff9440', "faller's length", fL);
+}
+
+// ---------- tidal figure ----------
+function drawTidal(t) {
+  const { ctx, w, h } = fit($('tidal'));
+  ctx.clearRect(0, 0, w, h);
+  const tg = state.valid ? R.tidal / g0 : 0;
+  // stretch grows with log of tidal g: 1 at ≤0.01 g, up to ~3.2 at extreme
+  const s = 1 + Math.max(0, Math.min(2.2, (Math.log10(Math.max(tg, 1e-6)) + 2) * 0.42));
+  const thin = 1 / Math.sqrt(s);
+  const cx = w / 2, mid = h / 2, H = Math.min(h * .5, 60) * s * .5 * (s > 2.5 ? .78 : 1);
+  const wob = reduce ? 0 : Math.sin(t * 2) * .02 * (s - 1);
+  // arrows
+  ctx.strokeStyle = '#64627a'; ctx.fillStyle = '#64627a'; ctx.lineWidth = 1;
+  const arrow = (y, dir) => { ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx, y + dir * 12); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx - 4, y + dir * 8); ctx.lineTo(cx, y + dir * 13); ctx.lineTo(cx + 4, y + dir * 8); ctx.fill(); };
+  if (s > 1.05) { arrow(mid - H * (1 + wob) - 10, -1); arrow(mid + H * (1 + wob) + 10, 1); }
+  // figure
+  const col = tg >= 10 ? '#ff5d5d' : tg >= 1 ? '#ffb877' : '#e9e7f2';
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Math.max(1.2, 2.4 * thin); ctx.lineCap = 'round';
+  const Y = k => mid + k * H * (1 + wob);
+  ctx.beginPath(); ctx.ellipse(cx, Y(-.82), 7 * thin, 7 * s * thin * .9, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(cx, Y(-.65)); ctx.lineTo(cx, Y(.2)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - 16 * thin, Y(-.1)); ctx.lineTo(cx, Y(-.45)); ctx.lineTo(cx + 16 * thin, Y(-.1)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - 11 * thin, Y(.95)); ctx.lineTo(cx, Y(.2)); ctx.lineTo(cx + 11 * thin, Y(.95)); ctx.stroke();
+  ctx.fillStyle = '#64627a'; ctx.font = '10.5px "IBM Plex Mono", monospace'; ctx.textAlign = 'left';
+  ctx.fillText('toward hole ↓', 6, h - 6);
+}
+
+// ---------- loop ----------
+function loop(now) {
+  let dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (state.paused) dt = 0;
+  simT += dt;
+  drawSky(dt); drawClocks(dt); drawTidal(simT);
+  requestAnimationFrame(loop);
+}
+new ResizeObserver(() => drawRuler()).observe($('ruler'));
+compute();
+requestAnimationFrame(loop);
+})();
+</script>
+
+</body>
+</html>
